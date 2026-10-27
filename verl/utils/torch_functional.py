@@ -170,15 +170,17 @@ class _LabelLogprobs(torch.autograd.Function):
         compute_dtype = torch.promote_types(logits.dtype, torch.float32)
         label_logits = gather_from_labels(logits, labels).to(compute_dtype)
         other_logits = logits.to(compute_dtype, copy=True).scatter_(-1, labels.unsqueeze(-1), -torch.inf)
-        label_logprobs = -F.softplus(torch.logsumexp(other_logits, dim=-1) - label_logits)
-        ctx.save_for_backward(logits, labels, label_logits, label_logprobs)
+        other_logsumexp = torch.logsumexp(other_logits, dim=-1)
+        label_logprobs = -F.softplus(other_logsumexp - label_logits)
+        # Backward needs the full logsumexp; rebuilt as label_logits - label_logprobs it is NaN for a -inf label
+        logsumexp = torch.logaddexp(other_logsumexp, label_logits)
+        ctx.save_for_backward(logits, labels, logsumexp, label_logprobs)
         return label_logprobs.to(logits.dtype)
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor, None]:
-        logits, labels, label_logits, label_logprobs = ctx.saved_tensors
+        logits, labels, logsumexp, label_logprobs = ctx.saved_tensors
         grad_output = grad_output.to(label_logprobs.dtype)
-        logsumexp = label_logits - label_logprobs
         # -p_j for the other logits, and 1 - p_label = -expm1(logp_label), which stays accurate as p_label -> 1
         grad_logits = logits.to(label_logprobs.dtype, copy=True).sub_(logsumexp.unsqueeze(-1)).exp_()
         grad_logits.mul_(-grad_output.unsqueeze(-1))

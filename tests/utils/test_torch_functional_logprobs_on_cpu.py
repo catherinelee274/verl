@@ -87,3 +87,19 @@ def test_logprobs_label_without_competitors_has_finite_grad(logprobs_fn):
     (grad,) = torch.autograd.grad(logprobs.sum(), logits)
     assert logprobs.item() == 0.0
     assert torch.all(grad == 0)
+
+
+@pytest.mark.parametrize("logprobs_fn", LOGPROB_FNS)
+def test_logprobs_unlikely_label_grad(logprobs_fn):
+    # A -inf label and one far below the others: the gradient is still onehot - softmax, and zero when masked out
+    logits = torch.tensor([[[-torch.inf, 0.0, 1.0], [-1e8, 0.0, 1.0]]], requires_grad=True)
+    labels = torch.tensor([[0, 0]])
+    logprobs = logprobs_fn(logits, labels)
+    (grad,) = torch.autograd.grad(logprobs.sum(), logits)
+    expected_grad = F.one_hot(labels, 3).double() - torch.softmax(logits.detach().double(), dim=-1)
+    assert logprobs[0, 0] == -torch.inf
+    torch.testing.assert_close(grad.double(), expected_grad, rtol=1e-5, atol=0)
+
+    masked = torch.where(torch.zeros_like(labels, dtype=torch.bool), logprobs_fn(logits, labels), 0.0)
+    (grad,) = torch.autograd.grad(masked.sum(), logits)
+    assert torch.all(grad == 0)
