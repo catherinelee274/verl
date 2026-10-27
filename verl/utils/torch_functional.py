@@ -25,6 +25,7 @@ import torch.distributed
 import torch.nn.functional as F
 from tensordict import TensorDict
 from torch import nn
+from torch.autograd.function import once_differentiable
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 from transformers import PreTrainedTokenizer
@@ -178,6 +179,7 @@ class _LabelLogprobs(torch.autograd.Function):
         return label_logprobs.to(logits.dtype)
 
     @staticmethod
+    @once_differentiable
     def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor, None]:
         logits, labels, logsumexp, label_logprobs = ctx.saved_tensors
         grad_output = grad_output.to(label_logprobs.dtype)
