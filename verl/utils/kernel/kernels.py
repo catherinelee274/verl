@@ -757,7 +757,7 @@ def efficient_entropy_forward(
     # logprob = -softplus(logsumexp_{j != label} - z_label) (Barron et al., "A Fix for Softmax and Cross-Entropy",
     # arXiv:2610.31642): z_label - logsumexp over all logits rounds a confident label's logprob, and the label
     # entry of its gradient, to exactly 0. softplus and expm1 run here in torch to keep their accuracy near 0.
-    token_logprobs = -torch.nn.functional.softplus(maximum + torch.log(accumulate_other) - label_logits)
+    token_logprobs = -torch.nn.functional.softplus((maximum - label_logits) + torch.log(accumulate_other))
     # 1 - p(label), for the label entry of the logprob gradient in the backward kernels
     one_minus_p = -torch.expm1(token_logprobs)
     if REDUCTION == EntropyReductionEnum._None:
